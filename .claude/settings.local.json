@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell:*)",
+      "Bash(python parallel_download.py:*)",
+      "Bash(python full_analysis.py:*)",
+      "Bash(python:*)",
+      "Bash(ls:*)",
+      "Bash(dir:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(timeout 30 ffmpeg:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
