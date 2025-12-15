@@ -121,3 +121,5 @@ chunk_*.csv
 
 # VA distribution chunks
 va_chunk_*/
+frontend/node_modules/
+analytics.db

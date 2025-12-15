@@ -16,11 +16,19 @@ import string
 import subprocess
 import hashlib
 import base64
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 # Fix Windows console encoding for Unicode filenames
 sys.stdout.reconfigure(encoding='utf-8')
+
+# Analytics tracking (optional, fails gracefully)
+try:
+    from analytics import Analytics
+    analytics = Analytics(script_name="spoof_videos")
+except ImportError:
+    analytics = None
 
 # Base configuration
 INPUT_BASE = r"C:\Users\asus\Desktop\projects\reeld\grq"
@@ -85,9 +93,12 @@ def get_duration(path):
 def spoof_video(args):
     """Spoof a single video with spoof_single settings (NVENC pipeline)."""
     input_path, output_path, idx, total, params = args
+    start_time = time.time()
 
     if os.path.exists(output_path):
         print(f"[{idx}/{total}] {os.path.basename(output_path)} already exists")
+        if analytics:
+            analytics.track("videos_skipped_exists", 1)
         return (input_path, output_path, True, params)
 
     try:
@@ -160,6 +171,7 @@ def spoof_video(args):
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
         if result.returncode == 0:
+            elapsed_ms = (time.time() - start_time) * 1000
             print(
                 f"[{idx}/{total}] OK {os.path.basename(output_path)} | "
                 f"crop {100 * (1 - w_keep):.1f}%/{100 * (1 - h_keep):.1f}% | "
@@ -182,6 +194,10 @@ def spoof_video(args):
                     "encoder": encoder_tag,
                 }
             )
+            # Track success
+            if analytics:
+                analytics.track("videos_spoofed", 1)
+                analytics.track("processing_time_ms", elapsed_ms)
             return (input_path, output_path, True, params)
 
         print(f"[{idx}/{total}] FAIL {os.path.basename(output_path)}")
@@ -190,10 +206,18 @@ def spoof_video(args):
             # Print last 3 lines of error (usually most relevant)
             for line in error_lines[-3:]:
                 print(f"  ERROR: {line}")
+        # Track failure
+        if analytics:
+            analytics.track("videos_spoofed_failed", 1)
+            analytics.error("ffmpeg", result.stderr[:200] if result.stderr else "Unknown error")
         return (input_path, output_path, False, params)
 
     except Exception as e:
         print(f"[{idx}/{total}] FAIL {os.path.basename(output_path)} - {str(e)}")
+        # Track exception
+        if analytics:
+            analytics.track("videos_spoofed_failed", 1)
+            analytics.error("exception", str(e)[:200])
         return (input_path, output_path, False, params)
 
 
@@ -264,6 +288,12 @@ def main():
     print(f"Spoofed videos saved to: {OUTPUT_BASE}")
     print(f"Mapping file: {MAPPING_FILE}")
     print(f"Params log: {PARAMS_FILE}")
+
+    # Flush analytics
+    if analytics:
+        analytics.track("videos_processed_total", len(mapping))
+        analytics.flush()
+        print(f"Analytics saved to: {analytics.db_path}")
 
 
 if __name__ == "__main__":
