@@ -1,6 +1,6 @@
 # Reeld - Video Spoofing Pipeline
 
-**Reeld** is a Python-based tool designed for processing and "spoofing" video content, primarily to generate unique variations of base video clips. This is commonly used in social media content repurposing (e.g., Instagram Reels) to create algorithmically distinct versions of videos while scaling posts across multiple accounts. The pipeline includes video transformation with NVENC GPU encoding, LSB audio steganography for tracking, batch processing, and a graphical user interface.
+**Reeld** is a Python-based tool designed for processing and "spoofing" video content, primarily to generate unique variations of base video clips. This is commonly used in social media content repurposing (e.g., Instagram Reels) to create algorithmically distinct versions of videos while scaling posts across multiple accounts. The pipeline includes video transformation with NVENC GPU encoding, LSB audio steganography for tracking, batch processing, a graphical user interface, and a real-time analytics dashboard.
 
 ## Project Overview & Purpose
 
@@ -15,6 +15,7 @@
   - Tkinter GUI for end-to-end pipeline execution.
   - AI clip transformation with Claude, Whisper, and ElevenLabs integration.
   - VA (Virtual Assistant) chunk distribution for scaling operations.
+  - Real-time analytics dashboard with FastAPI backend and React frontend.
 - **Use Case**: Bulk repurposing podcast/creator clips across multiple accounts with unique variations per video.
 
 ## Project Structure
@@ -24,25 +25,36 @@ reeld/
 ├── .claude/                  # Claude Code settings
 │   └── settings.local.json   # Local permission settings
 ├── .gitignore                # Git ignore rules
+├── docs/                     # Documentation
+│   ├── mvp_improvement_plan.md
+│   └── prd.md                # Product Requirements Document
+├── frontend/                 # React analytics dashboard
+│   ├── dist/                 # Production build
+│   ├── src/                  # Source (App.jsx, main.jsx, index.css)
+│   ├── package.json          # npm dependencies
+│   └── vite.config.js        # Vite bundler config
 ├── accounts.txt              # Instagram Reels URLs for Apify scraping
 ├── a.json                    # Apify scrape output (large, gitignored)
+├── analytics.py              # Thread-safe metrics collector (SQLite backend)
 ├── create_va_chunks.py       # Splits output CSV/videos for VA distribution
+├── dashboard.py              # FastAPI REST API for analytics dashboard
 ├── embed_audio_id.py         # Embeds shortcode in audio via LSB steganography
 ├── extract_audio_id.py       # Extracts embedded shortcode from audio
 ├── PROJECT_DOCUMENTATION.md  # Extended documentation (partially outdated)
+├── PRD.md                    # Product Requirements Document (copy)
 ├── reeld_gui.py              # Main GUI app (Tkinter) - complete pipeline
+├── requirements.txt          # Python dependencies for dashboard
 ├── spoof_chunk.py            # Processes videos from chunk mapping JSON
 ├── spoof_single.py           # Spoofs a single video file (5 variations)
 ├── spoof_videos.py           # Batch spoofing with parallel NVENC encoding
 ├── template.csv              # Output CSV format template for scheduling tools
+├── test_spoof.py             # Quick test script for analytics pipeline
 ├── transform_clip.py         # AI transformation: Claude + Whisper + ElevenLabs
 └── readme.txt                # This file
 ```
 
-- **Language**: 100% Python
-- **Size**: 8 Python scripts
-
-**Note**: `PROJECT_DOCUMENTATION.md` contains extended technical details but references some scripts that no longer exist (e.g., `parallel_download.py`, `generate_csv_from_mapping.py`). The GUI (`reeld_gui.py`) now handles downloading and CSV generation.
+- **Language**: ~90% Python, ~10% JavaScript/CSS (React frontend)
+- **Size**: 11 Python scripts + React dashboard
 
 ## Key Components
 
@@ -90,6 +102,22 @@ reeld/
 
   Features: Progress bars, log output, configurable spoofs per video, API key input.
 
+### Analytics & Dashboard
+
+- **analytics.py**: Thread-safe metrics collector with SQLite backend. Tracks videos_processed, captions_generated, claude_api_calls, processing_times, and errors. Supports batch flushes for parallel workers. Can be disabled via `ANALYTICS_ENABLED=false` environment variable.
+
+- **dashboard.py**: FastAPI REST API for the analytics dashboard. Provides endpoints:
+  - `/api/metrics/today` - Today's metrics
+  - `/api/metrics/{days}` - Metrics for last N days
+  - `/api/runs` - Recent pipeline runs
+  - `/api/pipeline-status` - Current pipeline status
+
+  Run with: `uvicorn dashboard:app --reload --port 8080`
+
+- **frontend/**: React dashboard built with Vite. Features KPI cards, charts, and runs table for real-time monitoring.
+
+- **test_spoof.py**: Quick test script that spoofs 4 videos with 2 copies each to test the analytics pipeline integration.
+
 ### Distribution Tools
 
 - **create_va_chunks.py**: Splits spoofed videos and CSV into smaller chunks for distribution to Virtual Assistants. Reads from chunk CSV files, copies videos to VA-specific directories, preserves CSV format.
@@ -109,6 +137,9 @@ openai             # Whisper transcription
 elevenlabs         # Text-to-speech
 python-dotenv      # Environment variable loading
 numpy              # Audio array manipulation
+fastapi>=0.104.0   # Dashboard REST API
+uvicorn>=0.24.0    # ASGI server for dashboard
+pydantic>=2.0.0    # Data validation
 ```
 
 Required system tools:
@@ -116,6 +147,12 @@ Required system tools:
 ffmpeg             # Video/audio processing (with NVENC support)
 ffprobe            # Media analysis
 yt-dlp             # Video downloading
+```
+
+For frontend development (optional):
+```
+node.js            # JavaScript runtime
+npm                # Package manager (for frontend)
 ```
 
 ## Installation
@@ -128,6 +165,7 @@ yt-dlp             # Video downloading
 
 2. Install Python dependencies:
    ```
+   pip install -r requirements.txt
    pip install anthropic openai elevenlabs python-dotenv numpy
    ```
 
@@ -189,6 +227,19 @@ Edit `num_vas` and `videos_per_va` in script:
 python create_va_chunks.py
 ```
 
+### Analytics Dashboard
+Start the backend API:
+```
+python dashboard.py
+# or: uvicorn dashboard:app --reload --port 8080
+```
+Open `http://localhost:8080` in browser to view the React dashboard.
+
+To run analytics test:
+```
+python test_spoof.py
+```
+
 ## How It Works (Pipeline)
 
 1. **Scraping**: Use Apify Instagram scraper with URLs from `accounts.txt`
@@ -204,7 +255,8 @@ python create_va_chunks.py
    - Spoofed videos in output directory
    - CSV file for scheduling tool import
    - Mapping JSON for tracking
-7. **Distribution**: Split into VA chunks if scaling with assistants
+7. **Analytics**: Metrics tracked in SQLite, viewable via dashboard
+8. **Distribution**: Split into VA chunks if scaling with assistants
 
 ## Configuration
 
@@ -222,6 +274,10 @@ Key constants in scripts (edit before running):
 - Video bitrate: 3-17 Mbps
 - Audio bitrate: 128-264 kbps
 - Scale: 1.0-2.0x
+
+**Analytics**:
+- `ANALYTICS_ENABLED`: Set to "false" to disable tracking (default: true)
+- `ANALYTICS_DB_PATH`: Path to SQLite database (default: analytics.db)
 
 ## Requirements
 
